@@ -7,6 +7,12 @@ No `transformers`, no `tokenizers`, no `trl`. Just PyTorch and NumPy.
 The point is not to beat Llama. The point is that you can read every line
 that goes from raw text to generated text.
 
+**Read the write-up:** https://einyx.github.io/myllm/ (also in
+[`WRITEUP.md`](WRITEUP.md)).
+
+**Model:** https://huggingface.co/einyx/myllm-small (see
+[`MODEL_CARD.md`](MODEL_CARD.md))
+
 ---
 
 ## 1. Quick start
