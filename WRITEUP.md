@@ -213,7 +213,16 @@ CC0-1.0, Apache-2.0, and CC-BY-4.0.
 
 ## Results
 
-*(populated below from the released model)*
+The released checkpoint is still training; these numbers will be filled in
+from `runs/small-clean/best.pt` when it finishes (~26 hours from the start
+of the clean run). The script that produces them is
+`scripts/08_eval.py`, and the loss curve is in
+`runs/small-clean/metrics.jsonl`.
+
+For reference, a pilot run on an earlier corpus mix reached a validation
+perplexity of 10.0 at 49M tokens, with validation loss still falling
+monotonically — which is the point: at this compute budget the model is
+sitting on the steep part of the curve, not the bottom of it.
 
 ---
 
