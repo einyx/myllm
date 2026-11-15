@@ -40,6 +40,9 @@ $PY scripts/05_train.py --preset tiny
 step "7. evaluate"
 $PY scripts/08_eval.py --ckpt runs/tiny/best.pt
 
+step "8. build the write-up site"
+$PY scripts/12_build_site.py
+
 cat <<'EOF'
 
 Pipeline complete. To start the real (multi-day) run:
@@ -49,4 +52,8 @@ Pipeline complete. To start the real (multi-day) run:
 To talk to a checkpoint:
 
     .venv/bin/python scripts/06_generate.py --ckpt runs/small/best.pt --interactive
+
+To publish the trained model to HuggingFace (needs `hf auth login`):
+
+    ./scripts/13_auto_publish.sh runs/small/best.pt einyx/myllm-small
 EOF
