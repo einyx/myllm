@@ -1,0 +1,18 @@
+# myllm dependencies.
+#
+# Deliberately short. There is no transformers, no tokenizers, no trl,
+# no accelerate -- the whole point is that the model and the tokenizer are
+# implemented here.
+
+torch>=2.5          # CPU build is fine: pip install torch --index-url https://download.pytorch.org/whl/cpu
+numpy>=1.26
+
+# data
+pyarrow>=15         # reading the parquet corpora
+huggingface_hub>=0.24  # downloading the datasets
+regex>=2023.0       # \p{L} unicode character classes for the tokenizer
+
+# --- publishing (optional; only needed for scripts/10_export_hf.py) ---
+transformers>=4.44    # PretrainedConfig / CausalLMOutput for the HF wrapper
+tokenizers>=0.19      # writing tokenizer.json in HuggingFace format
+safetensors>=0.4      # writing model.safetensors

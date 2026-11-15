@@ -1,0 +1,27 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# --- Data (large; regenerate with scripts/01_download_data.py) ---
+data/raw/
+data/processed/
+*.bin
+*.parquet
+
+# --- Run artifacts (checkpoints are ~1.5GB each) ---
+runs/
+!runs/.gitkeep
+
+# --- Secrets / local config ---
+.env
+*.token
+huggingface.token
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+*.swp

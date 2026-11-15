@@ -1,0 +1,12 @@
+What is a SQL injection attack and how do I prevent it?
+Explain CVE-2021-44228, the Log4Shell vulnerability.
+How should I store database credentials so they are not leaked?
+Describe the Log4j2 JNDI lookup vulnerability.
+What is cross-site scripting (XSS) and how do I defend against it?
+How do I securely generate and store random passwords?
+What does the OWASP Top 10 cover, and which item is most dangerous?
+Explain how a buffer overflow can lead to remote code execution.
+What is a man-in-the middle attack on TLS?
+How do I configure a Linux server to log and alert on suspicious SSH logins?
+Explain CVE-2014-0160, the Heartbleed bug.
+What is the principle of least privilege and how do I apply it to a web service?
