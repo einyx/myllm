@@ -49,3 +49,18 @@ else
     log "ERROR: publish failed -- see $LOG"
     exit 1
 fi
+
+# Move the run directory to the canonical name the docs use
+# (runs/<preset>), so the repository and the README agree.
+RUNDIR="$(dirname "$CKPT")"
+RUNDIR_NAME="$(basename "$RUNDIR")"
+CANONICAL_NAME="${RUNDIR_NAME%-clean}"
+if [[ "$RUNDIR_NAME" != "$CANONICAL_NAME" && -d "$RUNDIR" ]]; then
+    if [[ -e "runs/$CANONICAL_NAME" ]]; then
+        log "note: runs/$CANONICAL_NAME already exists, leaving $RUNDIR as is"
+    else
+        mv "$RUNDIR" "runs/$CANONICAL_NAME"
+        mv "$RUNDIR.log" "runs/$CANONICAL_NAME.log" 2>/dev/null || true
+        log "renamed $RUNDIR -> runs/$CANONICAL_NAME"
+    fi
+fi

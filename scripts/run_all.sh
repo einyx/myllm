@@ -55,5 +55,5 @@ To talk to a checkpoint:
 
 To publish the trained model to HuggingFace (needs `hf auth login`):
 
-    ./scripts/13_auto_publish.sh runs/small/best.pt einyx/myllm-small
+    ./scripts/13_auto_publish.sh runs/small/best.pt v1.0
 EOF
