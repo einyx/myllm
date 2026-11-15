@@ -34,11 +34,22 @@ arithmetic.</p>
 BPE tokenizer. Write its own training loop, sampler, and data pipeline.
 Train it on security-domain text, on a CPU, and document what breaks along
 the way.</p>
-<p>The three things I expected to be interesting turned out to be <em>different</em>
-from the three things that were interesting. The architecture went exactly
-as the textbook says it should. The real lessons were all about the
-machine, and one was a genuine bug in my own evaluation setup that would
-have quietly poisoned every number I reported.</p>
+<p>The architecture went exactly as the textbook says it should, which was
+reassuring and completely uninteresting. The real lessons were not about
+transformers at all.</p>
+<p>Three of the four things worth writing down are about <em>the machine</em> — a
+CPU whose fast cores and slow cores are not interchangeable, an
+instruction set that does not exist on it, and a validation split that
+was quietly measuring the wrong dataset. The fourth is a one-off-by-one
+bug in my own code that killed the run sixty steps in and would have
+shipped a broken model if the corpus had been slightly different.</p>
+<p>And they share a shape, which is the actual finding:</p>
+<blockquote>
+<p><strong>Every one of them was a mismatch between two components that were
+each individually correct.</strong> Not one was a bug <em>inside</em> a component.
+All of them were bugs in the <em>agreement</em> between components — which is
+exactly where nobody looks.</p>
+</blockquote>
 <hr />
 <h2>What was built</h2>
 <pre><code>myllm/
@@ -200,7 +211,64 @@ real confidence.</p>
 a dataset and only look at one end of it inherits the ordering of how it
 was written. Evaluation code is exactly the place people forget to check.</p>
 <hr />
-<h2>The data, and why the mix is a decision</h2>
+<h2>Finding 4: the vocabulary was one too small, and it crashed 60 steps in</h2>
+<p>This one is not about hardware or methodology — it is a plain off-by-one
+in my own code, and it is worth writing down because of <em>how</em> it failed.</p>
+<p>The tokenizer's special token <code>&lt;|endoftext|&gt;</code> is deliberately not stored
+in the token vocabulary (a learned merge could in principle produce the
+same bytes and collide with it). So the vocabulary has two parts: the
+byte-and-merge tokens, and the special tokens, kept separately.</p>
+<p><code>__len__</code> returned the size of the first part only. With 256 byte tokens
+and 32,511 merges, that is <strong>32,767</strong> — but the highest id the tokenizer
+can actually emit is <strong>32,767</strong>, so the real id space is 0..32,767,
+which is <strong>32,768</strong> ids.</p>
+<p>The training script sized the embedding matrix from <code>len(tokenizer)</code>. So
+the embedding had 32,767 rows, accepting ids 0..32,766, while the
+corpus contained id 32,767.</p>
+<p>Training died 60 steps in:</p>
+<pre><code>File &quot;myllm/model.py&quot;, line 530, in forward
+    x = self.tok_emb(idx) * math.sqrt(self.cfg.d_model)
+IndexError: index out of range in self
+</code></pre>
+<p>Three things about that failure are worth dwelling on:</p>
+<p><strong>The message tells you nothing.</strong> "index out of range in self" means
+"the id was bigger than the weight matrix". It never mentions ids,
+vocabularies, or tokenizers. The actual cause was four files away in a
+class whose job is to count things.</p>
+<p><strong>It was data-dependent.</strong> The rarest token in the vocabulary occurs once
+every few million tokens. A smaller corpus, a luckier sample, or a
+slightly different vocabulary would have trained to completion and
+published a model that crashed on the first rare input. I only caught it
+because the crash happened to land inside this run.</p>
+<p><strong>The adaptive code was the vector.</strong> I had deliberately added
+<code>vocab_size = len(tokenizer)</code> to the training script so the model would
+automatically match whatever tokenizer it was given. That "make it
+adaptive" code was what carried the wrong number into the model
+construction. Being clever about coupling is only safe when the thing
+you are coupling to is itself correct.</p>
+<p>Three changes, in increasing order of how much I like them:</p>
+<ol>
+<li><code>__len__</code> returns the true id-space size: the maximum emittable id
+   plus one.</li>
+<li>The trainer asserts <code>max_token_id_in_corpus &lt; vocab_size</code> before
+   training starts, and fails with a message that says what to do. A
+   five-second check that turns a mystery crash into a clear one.</li>
+<li>The self-test checks that the id space is contiguous and that an
+   embedding sized <code>len(tokenizer)</code> accepts every id the tokenizer can
+   emit.</li>
+</ol>
+<p>The general lesson is the one from Finding 3, in a different costume:</p>
+<blockquote>
+<p><strong>Check the boundary between two components at the seam, not inside
+each of them.</strong> Every one of the four findings in this project is a
+mismatch between two things that were each individually correct: a
+thread count and a CPU's core layout; a dtype and a CPU's instruction
+set; a validation split and a training distribution; a vocabulary and
+an embedding matrix. None of them was a bug <em>in</em> a component. All of
+them were bugs in the <em>agreement</em> between components, which is exactly
+where nobody looks.</p>
+</blockquote>
+<hr />
 <p>A language model becomes the distribution you give it. Four document
 shapes went into the corpus:</p>
 <ul>

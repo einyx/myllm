@@ -195,6 +195,42 @@ $ python scripts/03_train_tokenizer.py --sample-chars 60000000
 Round-trip is exact (`encode(decode(x)) == x`) for any input, including
 non-UTF-8 bytes. Compression on our corpus: **4.07 characters per token**.
 
+### `len(tokenizer)` must be the size of the ID SPACE
+
+This is a subtle one, and it killed a 26-hour run.
+
+The tokenizer's special token `<|endoftext|>` is deliberately *not* in
+`self.vocab` — a learned merge could in principle produce the same bytes
+and collide with it. So the vocabulary has two parts, and the special
+token's id can sit *inside* the range of the merge ids.
+
+```python
+len(self.vocab)          # 32,767  <- byte tokens + merges
+max(emittable id) + 1    # 32,768  <- the actual id space
+```
+
+The trainer sizes the embedding from `len(tokenizer)`. If that is one
+too small, the embedding accepts ids 0..32766 while the corpus contains
+id 32767, and training dies some random number of steps in with:
+
+```
+IndexError: index out of range in self
+```
+
+...inside `torch.nn.Embedding.forward`, with no mention of vocabularies.
+And because the rarest token occurs only every few million tokens, a
+smaller corpus would have trained to completion and published a model
+that crashed on its first rare input.
+
+Three defences, in `myllm/tokenizer.py`, `scripts/05_train.py` and
+`scripts/00_selftest.py` respectively:
+
+1. `__len__` returns the true id-space size.
+2. The trainer asserts `max_token_id_in_corpus < vocab_size` **before**
+   training starts and fails with a message that says what to do.
+3. The self-test checks the id space is contiguous and that an embedding
+   sized `len(tokenizer)` accepts every id the tokenizer can emit.
+
 ---
 
 ## 4. The data
@@ -471,7 +507,6 @@ numbers: `d_model`, `n_layers`, and `max_tokens`.
 ---
 
 ## 9. Results so far
-
 ### `tiny` preset — 12.8M params, 2.5M tokens, 1.06 hours
 
 ```

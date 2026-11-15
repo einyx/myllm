@@ -151,7 +151,37 @@ class BPETokenizer:
         return self.special_to_id[self.specials[0]]
 
     def __len__(self) -> int:
-        return len(self.vocab)
+        """The number of distinct token ids the tokenizer can emit.
+
+        This is the size of the ID SPACE, which is not the same as
+        `len(self.vocab)`.
+
+        The special tokens live in `special_to_id` / `id_to_special` and
+        are deliberately NOT part of `self.vocab` (a merge could in
+        principle produce the same bytes as a special token, and we do
+        not want that collision). So counting `vocab` alone undercounts
+        by `len(specials)` -- and an embedding matrix built one row too
+        small will crash on the rarest token, at some random point
+        during training.
+
+        That is not hypothetical: it is exactly what happened here. The
+        embedding had 32767 rows (valid ids 0..32766) but the tokenizer
+        could emit id 32767, so training died with
+        `IndexError: index out of range in self` 60 steps in.
+        """
+        n = len(self.vocab)
+        # The highest merge id, +1, is the true end of the id space.
+        # (The special token's id can sit *inside* the merge range, so
+        # counting specials alone is not enough.)
+        if self.inv_vocab:
+            n = max(n, max(self.inv_vocab.keys()) + 1)
+        for tid in self.id_to_special:
+            n = max(n, tid + 1)
+        return n
+
+    def max_token_id(self) -> int:
+        """The largest id this tokenizer can ever emit."""
+        return len(self) - 1
 
     # ------------------------------------------------------------------
     # Training

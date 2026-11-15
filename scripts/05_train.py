@@ -134,6 +134,33 @@ def main() -> int:
     if val_corpus:
         print(f"[data] val:   {val_corpus.n_tokens:,} tokens")
 
+    # --- SANITY CHECK: the embedding must cover every id in the corpus --
+    #
+    # The model's embedding has `vocab_size` rows, so it accepts ids
+    # 0..vocab_size-1. If the corpus contains a larger id the model
+    # crashes with a bare `IndexError: index out of range in self` deep
+    # inside torch.nn.Embedding, some random number of steps into
+    # training. Checking it up front turns a mystery crash into a clear
+    # message.
+    corpus_max = int(train_corpus.tokens.max())
+    if corpus_max >= model_cfg.vocab_size:
+        print(f"\nERROR: the corpus contains token id {corpus_max}, but the "
+              f"model's embedding only has {model_cfg.vocab_size} rows "
+              f"(valid ids 0..{model_cfg.vocab_size - 1}).")
+        print("       The corpus and the tokenizer disagree. Re-tokenize "
+              "the corpus with the tokenizer you are training against:")
+        print("         python scripts/04_tokenize_corpus.py")
+        return 1
+    if val_corpus is not None:
+        val_max = int(val_corpus.tokens.max())
+        if val_max >= model_cfg.vocab_size:
+            print(f"\nERROR: the validation corpus contains token id "
+                  f"{val_max}, but the model's embedding only has "
+                  f"{model_cfg.vocab_size} rows.")
+            return 1
+    print(f"[data] max token id {corpus_max} < vocab_size "
+          f"{model_cfg.vocab_size} -- ok")
+
     # ---- model ---------------------------------------------------------
     model = Transformer(model_cfg)
     n_params = model.num_params()

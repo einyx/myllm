@@ -199,6 +199,32 @@ def main() -> int:
     if tok_path.exists():
         tok = BPETokenizer.load(tok_path)
         check("tokenizer loaded", len(tok) > 256, f"vocab {len(tok):,}")
+
+        # The id space must be contiguous and cover every id we can emit.
+        # If len(tok) undercounts, an embedding built from it is too
+        # small and training dies later with an opaque IndexError.
+        max_id = max(max(tok.inv_vocab.keys()), max(tok.id_to_special.keys()))
+        check("len(tokenizer) covers the whole id space",
+              len(tok) > max_id,
+              f"len={len(tok):,} max_id={max_id:,} "
+              f"-> embedding rows {len(tok):,} accept ids 0..{len(tok) - 1:,}")
+        check("id space has no gaps",
+              len(tok) == len(set(tok.inv_vocab.keys()) |
+                             set(tok.id_to_special.keys())),
+              f"{len(tok):,} ids")
+
+        # And the embedding built from it must accept every id the
+        # tokenizer can produce.
+        emb = torch.nn.Embedding(len(tok), 8)
+        probe = torch.tensor(sorted(set(tok.inv_vocab.keys()) |
+                                    set(tok.id_to_special.keys())))
+        try:
+            emb(probe)
+            ok = True
+        except IndexError:
+            ok = False
+        check("an embedding sized len(tokenizer) accepts every id", ok)
+
         samples = [
             "Hello world!",
             "### Instruction:\nWhat is CVE-2021-44228?\n\n### Response:\n"
