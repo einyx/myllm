@@ -10,7 +10,7 @@ that goes from raw text to generated text.
 **Read the write-up:** https://einyx.github.io/myllm/ (also in
 [`WRITEUP.md`](WRITEUP.md)).
 
-**Model:** https://huggingface.co/einyx/myllm-small (see
+**Model:** https://github.com/einyx/myllm/releases/tag/v1.0 (also
 [`MODEL_CARD.md`](MODEL_CARD.md))
 
 ---
@@ -59,10 +59,9 @@ python scripts/10_export_hf.py --ckpt runs/small/best.pt \
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-tok = AutoTokenizer.from_pretrained("einyx/myllm-small", trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained(
-    "einyx/myllm-small", trust_remote_code=True
-)
+dist = "dist/myllm-small"          # or a downloaded release
+tok = AutoTokenizer.from_pretrained(f"{dist}/tokenizer.json")
+model = AutoModelForCausalLM.from_pretrained(dist, trust_remote_code=True)
 
 ids = tok("### Instruction:\nWhat is a buffer overflow?\n\n### Response:\n",
           return_tensors="pt").input_ids
@@ -76,6 +75,16 @@ loads the exported model and requires the logits to match the original
 checkpoint exactly (max abs difference `0.00e+00`). The published weights
 are loaded by a *copy of this repository's own model code*, not a
 re-implementation, so they cannot drift.
+
+### Publishing
+
+```bash
+# waits for training to finish, then exports and publishes
+./scripts/13_auto_publish.sh runs/small-clean/best.pt v1.0
+```
+
+Weights go to a **GitHub Release** (no setup required) and to
+**HuggingFace** if you have run `hf auth login`.
 
 ---
 

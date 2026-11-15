@@ -161,7 +161,8 @@ CPU: what breaks, and what it teaches.">
   <nav class="links">
     <a href="https://github.com/einyx/myllm">Source code</a>
     <a href="https://github.com/einyx/myllm#readme">README</a>
-    <a href="https://huggingface.co/einyx/myllm-small">Model on HuggingFace</a>
+    <a href="https://github.com/einyx/myllm/releases/tag/v1.0">Download the model</a>
+    <a href="https://huggingface.co/einyx/myllm-small">HuggingFace</a>
   </nav>
 </header>
 <main>

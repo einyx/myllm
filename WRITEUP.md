@@ -269,6 +269,13 @@ python scripts/05_train.py --preset tiny    # 13M params, ~1 hour
 python scripts/05_train.py --preset small   # 126M params, ~26 hours
 ```
 
+The trained model is published as a
+[GitHub release](https://github.com/einyx/myllm/releases/tag/v1.0)
+(`model.safetensors`, `tokenizer.json`, `config.json`) and, if the
+publisher is logged in to HuggingFace, mirrored at
+[`einyx/myllm-small`](https://huggingface.co/einyx/myllm-small).
+`./scripts/13_auto_publish.sh` does the export and both uploads.
+
 The self-test is worth running first, and it earned its keep. It caught
 four real bugs before a single long training run: a parameter-count
 formula off by exactly `d_model`, a name-shadowing bug in the repetition
@@ -276,3 +283,11 @@ penalty, a KV-cache assertion comparing logits at different positions, and
 left-padded batched generation leaking pad tokens into attention *and*
 shifting RoPE positions by the padding width. The last one is now
 verified equal to single-sequence generation to 2.4e-07.
+
+The HF export checks itself too. It re-tokenizes real corpus documents
+with both the original and the converted tokenizer and requires
+byte-identical output, then loads the exported model and requires the
+logits to match the checkpoint exactly (`max abs diff = 0.00e+00`). The
+published weights are loaded by a copy of this repository's own model
+code, vendored into the export, so the published artifact cannot drift
+from the code that trained it.

@@ -159,12 +159,33 @@ useful for convincing social engineering or scaled content generation.
 
 ## How to Use
 
+### Download
+
+**GitHub Release** (primary):
+https://github.com/einyx/myllm/releases/tag/v1.0
+
+| file | what |
+|---|---|
+| `model.safetensors` | the weights (503 MB) |
+| `tokenizer.json` | the tokenizer, in HuggingFace `tokenizers` format |
+| `config.json` | architecture + training metadata |
+
+**HuggingFace** (mirror, if published):
+https://huggingface.co/einyx/myllm-small
+
+### Load it
+
 ```python
+import json
+from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-repo = "einyx/myllm-small"
-tok = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained(repo, trust_remote_code=True)
+dist = Path("path/to/release")
+
+tok = AutoTokenizer.from_pretrained(str(dist / "tokenizer.json"))
+model = AutoModelForCausalLM.from_pretrained(
+    str(dist), trust_remote_code=True
+)
 
 prompt = ("### Instruction:\nWhat is a buffer overflow and how do I "
           "prevent it?\n\n### Response:\n")
@@ -173,12 +194,20 @@ out = model.generate(ids, max_new_tokens=120, temperature=0.8, top_p=0.95)
 print(tok.decode(out[0][ids.shape[1]:]))
 ```
 
+The release contains `config.json`, `model.safetensors` and
+`tokenizer.json`; `from_pretrained` needs the directory (it reads the
+config from `config.json` and the weights from `model.safetensors`).
+
+On HuggingFace the same directory layout works via
+`AutoModelForCausalLM.from_pretrained("einyx/myllm-small",
+trust_remote_code=True)`.
+
 Sampling notes: temperature 0.8 and top-p 0.95 work well. A repetition
 penalty around 1.15 helps small models. The context window is 512 tokens
 (total prompt + completion).
 
 The published weights are loaded by a **copy of the training
-repository's own model code** (vendored into the repo as
+repository's own model code** (vendored into the export as
 `myllm_vendor_*.py`), not by a re-implementation, so the published
 artifact cannot drift from the code that trained it.
 
