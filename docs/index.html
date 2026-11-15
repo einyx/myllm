@@ -296,15 +296,93 @@ derive from it, so it is not in the release. The remaining three are
 CC0-1.0, Apache-2.0, and CC-BY-4.0.</p>
 <hr />
 <h2>Results</h2>
-<p>The released checkpoint is still training; these numbers will be filled in
-from <code>runs/small-clean/best.pt</code> when it finishes (~26 hours from the start
-of the clean run). The script that produces them is
-<code>scripts/08_eval.py</code>, and the loss curve is in
-<code>runs/small-clean/metrics.jsonl</code>.</p>
-<p>For reference, a pilot run on an earlier corpus mix reached a validation
-perplexity of 10.0 at 49M tokens, with validation loss still falling
-monotonically — which is the point: at this compute budget the model is
-sitting on the steep part of the curve, not the bottom of it.</p>
+<p>The released checkpoint is still training (~24 hours remaining). These
+numbers come from the <strong>step-250 checkpoint</strong>, which is 7% of the way
+through the run — so treat them as a floor, not a ceiling.</p>
+<p>Held-out perplexity, broken down by what the model was asked to do:</p>
+<table>
+<thead>
+<tr>
+<th>document kind</th>
+<th>source</th>
+<th>loss</th>
+<th>perplexity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>instruction</td>
+<td>nvd_qa</td>
+<td>2.477</td>
+<td><strong>11.9</strong></td>
+</tr>
+<tr>
+<td>record</td>
+<td>circl</td>
+<td>3.813</td>
+<td>45.3</td>
+</tr>
+<tr>
+<td>instruction</td>
+<td>nist</td>
+<td>5.201</td>
+<td>181.5</td>
+</tr>
+<tr>
+<td>prose</td>
+<td>nist</td>
+<td>5.625</td>
+<td>277.3</td>
+</tr>
+</tbody>
+</table>
+<p>That table is the whole project in one grid. The model is already very
+good at the most templated shape in the corpus — answer a question in
+the <code>### Instruction / ### Response</code> form — and weakest at free prose,
+which is both the hardest thing to model and the first thing to run out
+of data.</p>
+<p>And the number I would put on the front of the model card, because it is
+the one that decides whether this model is safe to hand to someone:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CVE identifiers generated (32 samples)</td>
+<td>10</td>
+</tr>
+<tr>
+<td>present in the training corpus</td>
+<td>7 (70%)</td>
+</tr>
+<tr>
+<td><strong>fabricated</strong></td>
+<td><strong>3 (30%)</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Roughly one in three CVE identifiers this model produces is invented.</strong>
+The invented ones are not obviously wrong — <code>CVE-2025-4335</code> looks
+exactly as plausible as a real one — and the malformed cases
+(<code>CVE-2014-601013</code>, six digits) are if anything more wrong than the
+well-formed ones are right. The model has learned the statistical shape
+of a CVE identifier perfectly and the underlying facts not at all.</p>
+<p>Here is what it produced at step 250, asked about Log4Shell:</p>
+<blockquote>
+<p>Detecting exploitation of CVE-2026-11509 is classified as CWE-63 — a
+weakness weakness weakness. This classification helps defenders
+understand the root cause and apply appropriate countermeasures
+targeting CWE-310 patterns are particularly effective.</p>
+</blockquote>
+<p>The formatting is right. The CWE references are right-shaped. The
+confidence is right. The CVE id is invented, the CWE pairing is wrong,
+and the sentence is not English. Read that as a description of what a
+126M model at 7% of training looks like — and as an argument for why
+the warning belongs at the <em>top</em> of the model card, not the bottom.</p>
 <hr />
 <h2>Honest limitations</h2>
 <p><strong>It is undertrained, by a lot.</strong> 60M tokens for a 126M-parameter model is

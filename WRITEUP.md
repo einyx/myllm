@@ -294,16 +294,53 @@ CC0-1.0, Apache-2.0, and CC-BY-4.0.
 
 ## Results
 
-The released checkpoint is still training; these numbers will be filled in
-from `runs/small-clean/best.pt` when it finishes (~26 hours from the start
-of the clean run). The script that produces them is
-`scripts/08_eval.py`, and the loss curve is in
-`runs/small-clean/metrics.jsonl`.
+The released checkpoint is still training (~24 hours remaining). These
+numbers come from the **step-250 checkpoint**, which is 7% of the way
+through the run — so treat them as a floor, not a ceiling.
 
-For reference, a pilot run on an earlier corpus mix reached a validation
-perplexity of 10.0 at 49M tokens, with validation loss still falling
-monotonically — which is the point: at this compute budget the model is
-sitting on the steep part of the curve, not the bottom of it.
+Held-out perplexity, broken down by what the model was asked to do:
+
+| document kind | source | loss | perplexity |
+|---|---|---|---|
+| instruction | nvd_qa | 2.477 | **11.9** |
+| record | circl | 3.813 | 45.3 |
+| instruction | nist | 5.201 | 181.5 |
+| prose | nist | 5.625 | 277.3 |
+
+That table is the whole project in one grid. The model is already very
+good at the most templated shape in the corpus — answer a question in
+the `### Instruction / ### Response` form — and weakest at free prose,
+which is both the hardest thing to model and the first thing to run out
+of data.
+
+And the number I would put on the front of the model card, because it is
+the one that decides whether this model is safe to hand to someone:
+
+| | |
+|---|---|
+| CVE identifiers generated (32 samples) | 10 |
+| present in the training corpus | 7 (70%) |
+| **fabricated** | **3 (30%)** |
+
+**Roughly one in three CVE identifiers this model produces is invented.**
+The invented ones are not obviously wrong — `CVE-2025-4335` looks
+exactly as plausible as a real one — and the malformed cases
+(`CVE-2014-601013`, six digits) are if anything more wrong than the
+well-formed ones are right. The model has learned the statistical shape
+of a CVE identifier perfectly and the underlying facts not at all.
+
+Here is what it produced at step 250, asked about Log4Shell:
+
+> Detecting exploitation of CVE-2026-11509 is classified as CWE-63 — a
+> weakness weakness weakness. This classification helps defenders
+> understand the root cause and apply appropriate countermeasures
+> targeting CWE-310 patterns are particularly effective.
+
+The formatting is right. The CWE references are right-shaped. The
+confidence is right. The CVE id is invented, the CWE pairing is wrong,
+and the sentence is not English. Read that as a description of what a
+126M model at 7% of training looks like — and as an argument for why
+the warning belongs at the *top* of the model card, not the bottom.
 
 ---
 

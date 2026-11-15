@@ -536,13 +536,33 @@ Which is a nice summary of the whole project in one table: after 2.5M
 tokens the model is best at imitating Q&A answers (the most templated
 shape), worst at free-form prose, and middling on structured records.
 
-### `small` preset — 125.9M params, 60M tokens, ~28 hours
+### `small` preset — 125.9M params, 60M tokens, ~24 hours
 
 Running. Watch it with:
 
 ```
 python scripts/09_plot.py --run runs/small
 ```
+
+At **step 250** (7% of training), held-out perplexity by document type:
+
+| document kind | source | loss | perplexity |
+|---|---|---|---|
+| instruction | nvd_qa | 2.477 | **11.9** |
+| record | circl | 3.813 | 45.3 |
+| instruction | nist | 5.201 | 181.5 |
+| prose | nist | 5.625 | 277.3 |
+
+And the number that goes on the front of the model card:
+
+| | |
+|---|---|
+| CVE identifiers generated (32 samples) | 10 |
+| present in the training corpus | 7 (70%) |
+| **fabricated** | **3 (30%)** |
+
+The model has learned the *shape* of a CVE identifier perfectly and the
+facts not at all. See [`MODEL_CARD.md`](MODEL_CARD.md).
 
 ---
 
