@@ -22,33 +22,18 @@ CPU: what breaks, and what it teaches.">
   </nav>
 </header>
 <main>
-<p><em>A learning project. No <code>transformers</code>, no <code>tokenizers</code>, no <code>trl</code> — just
+<p><em>A learning project. No <code>transformers</code>, no <code>tokenizers</code>, no <code>trl</code>. Just
 PyTorch, NumPy, and a lot of reading about why things are the way they
 are.</em></p>
 <hr />
 <h2>The premise</h2>
-<p>I wanted to understand what actually happens between "here is a text file"
-and "here is a token the model decided to emit". Not the API calls — the
-arithmetic.</p>
-<p>So: build a decoder-only transformer from nothing. Train its own byte-level
-BPE tokenizer. Write its own training loop, sampler, and data pipeline.
-Train it on security-domain text, on a CPU, and document what breaks along
-the way.</p>
-<p>The architecture went exactly as the textbook says it should, which was
-reassuring and completely uninteresting. The real lessons were not about
-transformers at all.</p>
-<p>Three of the four things worth writing down are about <em>the machine</em> — a
-CPU whose fast cores and slow cores are not interchangeable, an
-instruction set that does not exist on it, and a validation split that
-was quietly measuring the wrong dataset. The fourth is a one-off-by-one
-bug in my own code that killed the run sixty steps in and would have
-shipped a broken model if the corpus had been slightly different.</p>
-<p>And they share a shape, which is the actual finding:</p>
+<p>I wanted to understand what actually happens between "here is a text file" and "here is a token the model decided to emit". Not the API calls. The arithmetic.</p>
+<p>So I built a decoder-only transformer from nothing. Trained its own byte level BPE tokenizer. Wrote its own training loop, sampler, and data pipeline. Trained it on security domain text, on a CPU, and wrote down what broke along the way.</p>
+<p>The architecture went exactly as the textbook says it should, which was reassuring and completely uninteresting. The real lessons were not about transformers at all.</p>
+<p>Three of the four things worth writing down are about the machine. A CPU whose fast cores and slow cores are not interchangeable. An instruction set that does not exist on it. A validation split that was quietly measuring the wrong dataset. The fourth is an off by one in my own code that killed the run sixty steps in and would have shipped a broken model if the corpus had been slightly different.</p>
+<p>They share a shape, and the shape is the actual finding:</p>
 <blockquote>
-<p><strong>Every one of them was a mismatch between two components that were
-each individually correct.</strong> Not one was a bug <em>inside</em> a component.
-All of them were bugs in the <em>agreement</em> between components — which is
-exactly where nobody looks.</p>
+<p>Every one of them was a mismatch between two components that were each individually correct. Not one was a bug inside a component. All of them were bugs in the agreement between components, which is exactly where nobody looks.</p>
 </blockquote>
 <hr />
 <h2>What was built</h2>
@@ -60,27 +45,14 @@ exactly where nobody looks.</p>
 ├── generate.py    temperature / top-k / top-p / KV cache
 └── 9 scripts      download -&gt; build -&gt; tokenize -&gt; train -&gt; eval -&gt; plot
 </code></pre>
-<p><strong>The model.</strong> 125.9M parameters: <code>d_model=768</code>, 16 layers, 12 attention
-heads sharing 4 key/value heads (GQA), SwiGLU feed-forward with
-<code>hidden = 8/3 × 768</code>, RoPE positions, RMSNorm, pre-norm residual
-structure, and tied input/output embeddings. Context length 512.</p>
-<p><strong>The tokenizer.</strong> Byte-level BPE with a 32K vocabulary, trained with an
-<em>incremental</em> merge algorithm: instead of rescanning the corpus once per
-merge (≈10¹¹ operations for 32K merges), it maintains <code>pair_counts</code> and
-<code>pair_to_words</code> and only touches the words that actually contain the pair
-being merged. Round-trip is exact for any input, including invalid UTF-8.</p>
-<p><strong>The data.</strong> 749,191 documents from three public security corpora,
-concatenated into one packed token stream and cut into random windows —
-no padding, so every token we compute a loss on is a real token.</p>
+<p><strong>The model.</strong> 125.9M parameters. <code>d_model=768</code>, 16 layers, 12 attention heads sharing 4 key/value heads (GQA), SwiGLU feed forward with <code>hidden = 8/3 * 768</code>, RoPE positions, RMSNorm, pre-norm residual blocks, tied input and output embeddings. Context length 512.</p>
+<p><strong>The tokenizer.</strong> Byte level BPE with a 32K vocabulary, trained with an incremental merge algorithm. Instead of rescanning the corpus once per merge, which is about 10^11 operations for 32K merges, it keeps <code>pair_counts</code> and <code>pair_to_words</code> in memory and only touches the words that actually contain the pair being merged. Round trip is exact for any input, including invalid UTF-8.</p>
+<p><strong>The data.</strong> 749,191 documents from three public security corpora, concatenated into one packed token stream and cut into random windows. No padding, so every token we compute a loss on is a real token.</p>
 <hr />
 <h2>Finding 1: your CPU has fast cores and slow cores, and PyTorch doesn't care</h2>
 <p>The first real surprise had nothing to do with transformers.</p>
-<p>This machine is an i9-13900K: 8 P-cores (performance) plus 16 E-cores
-(efficiency). PyTorch's default thread count is the number of <em>physical</em>
-cores, so 24 — which means it happily schedules GEMM work onto the E-cores.
-Those E-cores have no AVX-512 and run at roughly half the clock. They also
-don't hide P-core latency, so they don't even free up P-cores.</p>
-<p>Measured on the real 126M model, batch 16×512:</p>
+<p>This machine is an i9-13900K. Eight P cores for performance, sixteen E cores for efficiency. PyTorch's default thread count is the number of physical cores, so 24. That means it happily schedules matrix multiply work onto the E cores. Those cores have no AVX-512 and run at roughly half the clock. They also do not hide P core latency, so they do not even free up the P cores.</p>
+<p>Measured on the real 126M model, batch 16 by 512:</p>
 <table>
 <thead>
 <tr>
@@ -93,17 +65,17 @@ don't hide P-core latency, so they don't even free up P-cores.</p>
 <tr>
 <td>8</td>
 <td>363</td>
-<td>P-cores, one thread each</td>
+<td>P cores, one thread each</td>
 </tr>
 <tr>
 <td><strong>16</strong></td>
 <td><strong>467</strong></td>
-<td><strong>P-cores + hyperthreads</strong></td>
+<td>P cores plus hyperthreads</td>
 </tr>
 <tr>
 <td>24</td>
 <td>269</td>
-<td>PyTorch's default — E-cores included</td>
+<td>PyTorch's default, E cores included</td>
 </tr>
 <tr>
 <td>32</td>
@@ -112,19 +84,13 @@ don't hide P-core latency, so they don't even free up P-cores.</p>
 </tr>
 </tbody>
 </table>
-<p>Going from PyTorch's default to the right number was a <strong>1.8× speedup</strong>, or
-roughly 14 extra hours of training. The fix is one line:</p>
+<p>Going from the default to the right number was a 1.8x speedup. That is roughly fourteen extra hours of training. The fix is one line:</p>
 <pre><code class="language-python">torch.set_num_threads(16)
 </code></pre>
-<p><code>TrainConfig.num_threads</code> now defaults to 16 and the measurement is
-recorded in the source next to it. The general lesson: on a hybrid CPU,
-"how many threads" is not a rounding question, and you should measure it
-rather than assume the default is sensible.</p>
+<p>The general lesson: on a hybrid CPU, thread count is not a rounding question. Measure it instead of assuming the default is sensible.</p>
 <hr />
-<h2>Finding 2: bfloat16 was 93× <em>slower</em> than float32</h2>
-<p>I had assumed <code>bfloat16</code> would be a modest win — it's 2–4× faster than
-fp32 on a GPU, so it's the reflexive choice when someone says "make it
-faster."</p>
+<h2>Finding 2: bfloat16 was 93x slower than float32</h2>
+<p>I assumed <code>bfloat16</code> would be a modest win. It is 2 to 4 times faster than fp32 on a GPU, so it is the reflexive answer when someone says "make it faster".</p>
 <p>Measured on the same model:</p>
 <table>
 <thead>
@@ -147,43 +113,26 @@ faster."</p>
 </tr>
 </tbody>
 </table>
-<p>Five tokens per second. A 93× <em>regression</em>.</p>
-<p>The reason is the same hardware fact as Finding 1: this CPU has AVX2 but
-<strong>no AVX-512-BF16</strong>. There is no native bf16 multiply, so every bf16
-matrix multiply is emulated — and the conversion overhead dominates the
-actual arithmetic by two orders of magnitude.</p>
-<p>This one is worth internalizing because it inverts a GPU intuition that
-carries very far:</p>
+<p>Five tokens per second. A 93x regression.</p>
+<p>The reason is the same hardware fact as finding 1. This CPU has AVX2 but no AVX-512-BF16. There is no native bf16 multiply, so every bf16 matrix multiply gets emulated, and the conversion overhead dominates the actual arithmetic by two orders of magnitude.</p>
+<p>This one is worth keeping in mind because it inverts a GPU intuition that carries very far:</p>
 <blockquote>
-<p><strong>Reduced precision is only fast where the hardware has native
-instructions for it.</strong> "bf16 is faster" is not a property of bf16; it is
-a property of bf16 <em>plus</em> your CPU.</p>
+<p>Reduced precision is only fast where the hardware has native instructions for it. "bf16 is faster" is not a property of bf16. It is a property of bf16 plus your CPU.</p>
 </blockquote>
-<p>The same trap has a milder form on GPUs — bf16 on a consumer card without
-good bf16 tensor-core throughput can be slower than fp16 — but a 93×
-gap is the extreme version of the lesson.</p>
+<p>The same trap has a milder form on GPUs. bf16 on a consumer card without good bf16 tensor core throughput can be slower than fp16. But 93x is the extreme version of the lesson.</p>
 <hr />
 <h2>Finding 3: my validation loss was measuring one dataset and calling it "validation"</h2>
-<p>This is the one that mattered most, and it was a bug in my own setup, not
-in the model.</p>
-<p>The symptom: training loss 4.15, validation loss 5.95, and a gap that
-refused to close. That gap says "overfitting", and the reflex is to add
-regularization, drop the learning rate, or get more data — all of which
-would have been the wrong fix.</p>
-<p>The actual cause was an accident of ordering:</p>
+<p>This is the one that mattered most, and it was a bug in my own setup rather than in the model.</p>
+<p>The symptom: training loss 4.15, validation loss 5.95, and a gap that refused to close. That gap says overfitting. The reflex is to add regularization, drop the learning rate, or get more data. All of those would have been the wrong fix.</p>
+<p>The actual cause was an accident of ordering.</p>
 <ol>
-<li>The corpus builder writes documents <strong>in source order</strong>: all the NIST
-   documents, then all the NVD Q&amp;A, then all the CVE records.</li>
-<li>The training loop samples <strong>random</strong> windows from that stream — so
-   training sees the correct proportional mix of all three sources.</li>
-<li>The evaluator reads <strong>sequential</strong> windows starting from the beginning
-   of <code>val.bin</code>.</li>
+<li>The corpus builder writes documents in source order. All the NIST documents, then all the NVD Q&amp;A, then all the CVE records.</li>
+<li>The training loop samples random windows from that stream, so training sees the correct proportional mix of all three sources.</li>
+<li>The evaluator reads sequential windows starting from the beginning of <code>val.bin</code>.</li>
 <li>And <code>val.bin</code> was, like the training file, in source order.</li>
 </ol>
-<p>So the first 82,000 tokens of the validation file were <strong>100% NIST</strong>, and
-every "validation loss" I printed was a measurement of NIST alone.</p>
-<p>The giveaway is in the per-document-type breakdown, which is why I built
-that tool:</p>
+<p>The first 82,000 tokens of the validation file were 100 percent NIST. Every validation number I printed was a measurement of NIST alone.</p>
+<p>The giveaway is in the per document type breakdown:</p>
 <pre><code>kind           source            docs     loss        ppl
 continuation   pretrain_640k      120    4.739     114.33
 instruction    nist               120    5.649     283.91
@@ -191,114 +140,51 @@ instruction    nvd_qa             120    3.662      38.92
 prose          nist               120    6.113     451.73
 record         circl              120    4.141      62.86
 </code></pre>
-<p>NIST instruction and NIST prose are the two <em>hardest</em> kinds (5.65 and
-6.11). My validation number was a weighted average of exactly those two,
-which is why it sat so far above the training loss.</p>
-<p>The fix is one line in the corpus builder — <strong>shuffle the validation
-split</strong> before writing it, so any prefix of <code>val.bin</code> is a representative
-sample:</p>
+<p>NIST instruction and NIST prose are the two hardest kinds, at 5.65 and 6.11. My validation number was an average of exactly those two, which is why it sat so far above the training loss.</p>
+<p>The fix is one line in the corpus builder. Shuffle the validation split before writing it, so any prefix of <code>val.bin</code> is a representative sample.</p>
 <pre><code class="language-python">random.Random(20260808).shuffle(val_docs)
 </code></pre>
-<p>Validation perplexity went from <strong>411 to 94</strong> for the same checkpoint.
-The training loss never moved.</p>
+<p>Validation perplexity went from 411 to 94 for the same checkpoint. The training loss never moved.</p>
 <blockquote>
-<p><strong>A validation number that measures a different distribution than your
-training set is worse than no validation number at all</strong> — because it
-looks authoritative. It will send you optimising the wrong thing with
-real confidence.</p>
+<p>A validation number that measures a different distribution than your training set is worse than no validation number at all, because it looks authoritative. It will send you optimising the wrong thing with real confidence.</p>
 </blockquote>
-<p>The general form of this bug is worth naming: <em>any</em> place where you slice
-a dataset and only look at one end of it inherits the ordering of how it
-was written. Evaluation code is exactly the place people forget to check.</p>
+<p>The general form of this bug is worth naming. Anywhere you slice a dataset and only look at one end of it, you inherit the order in which it was written. Evaluation code is exactly the place people forget to check.</p>
 <hr />
 <h2>Finding 4: the vocabulary was one too small, and it crashed 60 steps in</h2>
-<p>This one is not about hardware or methodology — it is a plain off-by-one
-in my own code, and it is worth writing down because of <em>how</em> it failed.</p>
-<p>The tokenizer's special token <code>&lt;|endoftext|&gt;</code> is deliberately not stored
-in the token vocabulary (a learned merge could in principle produce the
-same bytes and collide with it). So the vocabulary has two parts: the
-byte-and-merge tokens, and the special tokens, kept separately.</p>
-<p><code>__len__</code> returned the size of the first part only. With 256 byte tokens
-and 32,511 merges, that is <strong>32,767</strong> — but the highest id the tokenizer
-can actually emit is <strong>32,767</strong>, so the real id space is 0..32,767,
-which is <strong>32,768</strong> ids.</p>
-<p>The training script sized the embedding matrix from <code>len(tokenizer)</code>. So
-the embedding had 32,767 rows, accepting ids 0..32,766, while the
-corpus contained id 32,767.</p>
+<p>This one is a plain off by one in my own code, and it is worth writing down because of how it failed.</p>
+<p>The tokenizer's special token <code>&lt;|endoftext|&gt;</code> is deliberately not stored in the token vocabulary. A learned merge could in principle produce the same bytes and collide with it. So the vocabulary has two parts, the byte and merge tokens and the special tokens, kept separately.</p>
+<p><code>__len__</code> returned the size of the first part only. With 256 byte tokens and 32,511 merges that is 32,767. But the highest id the tokenizer can actually emit is 32,767, so the real id space is 0..32,767, which is 32,768 ids.</p>
+<p>The training script sized the embedding matrix from <code>len(tokenizer)</code>. The embedding had 32,767 rows and accepted ids 0..32,766, while the corpus contained id 32,767.</p>
 <p>Training died 60 steps in:</p>
 <pre><code>File &quot;myllm/model.py&quot;, line 530, in forward
     x = self.tok_emb(idx) * math.sqrt(self.cfg.d_model)
 IndexError: index out of range in self
 </code></pre>
-<p>Three things about that failure are worth dwelling on:</p>
-<p><strong>The message tells you nothing.</strong> "index out of range in self" means
-"the id was bigger than the weight matrix". It never mentions ids,
-vocabularies, or tokenizers. The actual cause was four files away in a
-class whose job is to count things.</p>
-<p><strong>It was data-dependent.</strong> The rarest token in the vocabulary occurs once
-every few million tokens. A smaller corpus, a luckier sample, or a
-slightly different vocabulary would have trained to completion and
-published a model that crashed on the first rare input. I only caught it
-because the crash happened to land inside this run.</p>
-<p><strong>The adaptive code was the vector.</strong> I had deliberately added
-<code>vocab_size = len(tokenizer)</code> to the training script so the model would
-automatically match whatever tokenizer it was given. That "make it
-adaptive" code was what carried the wrong number into the model
-construction. Being clever about coupling is only safe when the thing
-you are coupling to is itself correct.</p>
+<p>Three things about that failure are worth dwelling on.</p>
+<p>The message tells you nothing. "index out of range in self" means the id was bigger than the weight matrix. It never mentions ids, vocabularies, or tokenizers. The actual cause was four files away, in a class whose job is to count things.</p>
+<p>It was data dependent. The rarest token in the vocabulary occurs once every few million tokens. A smaller corpus, a luckier sample, or a slightly different vocabulary would have trained to completion and published a model that crashed on the first rare input. I only caught it because the crash happened to land inside this run.</p>
+<p>The adaptive code was the vector. I had deliberately added <code>vocab_size = len(tokenizer)</code> to the training script so the model would automatically match whatever tokenizer it was given. That line, written to make things robust, carried the wrong number into the model. Being clever about coupling is only safe when the thing you couple to is itself correct.</p>
 <p>Three changes, in increasing order of how much I like them:</p>
 <ol>
-<li><code>__len__</code> returns the true id-space size: the maximum emittable id
-   plus one.</li>
-<li>The trainer asserts <code>max_token_id_in_corpus &lt; vocab_size</code> before
-   training starts, and fails with a message that says what to do. A
-   five-second check that turns a mystery crash into a clear one.</li>
-<li>The self-test checks that the id space is contiguous and that an
-   embedding sized <code>len(tokenizer)</code> accepts every id the tokenizer can
-   emit.</li>
+<li><code>__len__</code> returns the true id space size, which is the maximum emittable id plus one.</li>
+<li>The trainer asserts <code>max_token_id_in_corpus &lt; vocab_size</code> before training starts, and fails with a message that says what to do.</li>
+<li>The self test checks that the id space is contiguous and that an embedding sized <code>len(tokenizer)</code> accepts every id the tokenizer can emit.</li>
 </ol>
-<p>The general lesson is the one from Finding 3, in a different costume:</p>
-<blockquote>
-<p><strong>Check the boundary between two components at the seam, not inside
-each of them.</strong> Every one of the four findings in this project is a
-mismatch between two things that were each individually correct: a
-thread count and a CPU's core layout; a dtype and a CPU's instruction
-set; a validation split and a training distribution; a vocabulary and
-an embedding matrix. None of them was a bug <em>in</em> a component. All of
-them were bugs in the <em>agreement</em> between components, which is exactly
-where nobody looks.</p>
-</blockquote>
 <hr />
-<p>A language model becomes the distribution you give it. Four document
-shapes went into the corpus:</p>
-<ul>
-<li><strong>instruction</strong> (<code>### Instruction:\n&lt;q&gt;\n\n### Response:\n&lt;a&gt;</code>) — teaches
-  the model to <em>answer</em> rather than just continue text forever. Without
-  this, a base model never responds.</li>
-<li><strong>prose</strong> — raw technical writing. Teaches grammar and long-range
-  structure. Instruction documents alone make a model stilted.</li>
-<li><strong>record</strong> — a CVE with its severity and affected products. Teaches
-  precise factual statement.</li>
-<li><strong>continuation</strong> — everything else. Keeps the model able to just write.</li>
-</ul>
-<p>Two deliberate choices that are easy to get wrong:</p>
-<ul>
-<li><strong>The <code>system</code> prompt is dropped.</strong> In the NIST dataset every record
-  begins with the same ~70-token system prompt. Training on it teaches the
-  model to emit a constant string.</li>
-<li><strong>The mix is a character budget per source</strong>, not a document count. A
-  budget makes the knob explicit and makes the proportions stable when
-  document lengths change.</li>
-</ul>
-<p>The final released corpus excludes one source. <code>11-47/Organized_PreTrain_Cyber_Security_640k</code>
-carries no license tag on the Hub, which means no permission was granted to
-derive from it, so it is not in the release. The remaining three are
-CC0-1.0, Apache-2.0, and CC-BY-4.0.</p>
+<h2>The data, and why the mix is a decision</h2>
+<p>A language model becomes the distribution you give it. Four document shapes went into the corpus.</p>
+<p>Instruction documents, in the form <code>### Instruction:</code> then a question then <code>### Response:</code> then an answer. These teach the model to answer rather than just continue text forever. Without them a base model never responds.</p>
+<p>Prose. Raw technical writing. This teaches grammar and long range structure. Instruction documents alone make a model stilted.</p>
+<p>Records. A CVE with its severity and affected products. This teaches precise factual statement.</p>
+<p>Continuation. Everything else. Keeps the model able to just write.</p>
+<p>Two deliberate choices that are easy to get wrong.</p>
+<p>The system prompt is dropped. In the NIST dataset every record begins with the same 70 token system prompt. Training on it teaches the model to emit a constant string.</p>
+<p>The mix is a character budget per source, not a document count. A budget makes the knob explicit and keeps the proportions stable when document lengths change.</p>
+<p>The final released corpus excludes one source. <code>11-47/Organized_PreTrain_Cyber_Security_640k</code> carries no license tag on the Hub, which means no permission was granted to derive from it, so it is not in the release. The remaining three are CC0-1.0, Apache-2.0, and CC-BY-4.0.</p>
 <hr />
 <h2>Results</h2>
-<p>Final numbers, from the released checkpoint (step 3,662 of 3,662, fully
-annealed).</p>
-<p>Held-out perplexity, broken down by what the model was asked to do:</p>
+<p>Final numbers, from the released checkpoint at step 3,662 of 3,662, fully annealed.</p>
+<p>Held out perplexity, broken down by what the model was asked to do:</p>
 <table>
 <thead>
 <tr>
@@ -335,16 +221,9 @@ annealed).</p>
 </tr>
 </tbody>
 </table>
-<p>Overall validation perplexity <strong>9.90</strong>, from a uniformly-random 32,768.
-The validation curve fell monotonically for the whole run — 4.44 at
-step 250 to 2.25 at the end — with no sign of overfitting at any point.</p>
-<p>That table is the whole project in one grid. The model is extremely
-good at the most templated shape in the corpus — answer a question in
-the <code>### Instruction / ### Response</code> form, where it reaches 2.4
-perplexity — and weakest at free prose, which is both the hardest thing
-to model and the first thing to run out of data.</p>
-<p>And the number I would put on the front of the model card, because it
-is the one that decides whether this model is safe to hand to someone:</p>
+<p>Overall validation perplexity 9.90, from a starting point of 32,768 for a uniformly random model. The validation curve fell monotonically for the whole run, 4.44 at step 250 down to 2.25 at the end, with no sign of overfitting at any point.</p>
+<p>The model is extremely good at the most templated shape in the corpus. Answer a question in the instruction and response form, and it reaches 2.4 perplexity. It is weakest at free prose, which is both the hardest thing to model and the first thing to run out of data.</p>
+<p>And here is the number I would put on the front of the model card, because it decides whether this model is safe to hand to someone:</p>
 <table>
 <thead>
 <tr>
@@ -367,52 +246,19 @@ is the one that decides whether this model is safe to hand to someone:</p>
 </tr>
 </tbody>
 </table>
-<p><strong>Roughly one in seven CVE identifiers this model produces is
-invented.</strong> And here is the part that matters more than the rate: at 7%
-of training the model produced obviously malformed identifiers — six
-digits, impossible years. At full training it produced
-<code>CVE-2021-41774</code>, which is <strong>one digit away from the real
-CVE-2021-41773</strong> that appeared in the prompt.</p>
-<p><strong>The failure mode got subtler as the model got better.</strong> A malformed
-identifier is caught by anyone who glances at it. A nearly-correct one
-passes casual review, because the only thing wrong with it is that it
-does not exist. For a model whose job is producing security reference
-material, that is the most dangerous direction the quality curve could
-possibly move in — and it is why the model card leads with the
-hallucination rate instead of the perplexity.</p>
+<p>Roughly one in seven CVE identifiers this model produces is invented. And the part that matters more than the rate: at 7 percent of training the model produced obviously malformed identifiers. Six digits, impossible years. At full training it produced <code>CVE-2021-41774</code>, which is one digit away from the real <code>CVE-2021-41773</code> that appeared in the prompt.</p>
+<p>The failure mode got subtler as the model got better. A malformed identifier is caught by anyone who glances at it. A nearly correct one passes casual review, because the only thing wrong with it is that it does not exist. For a model whose job is producing security reference material, that is the most dangerous direction the quality curve could move in.</p>
 <p>Asked about a buffer overflow, the released model says:</p>
 <blockquote>
-<p>The following vulnerability has been resolved: Assessment: A.0x
-A.0:•19, 2018-1a through 2.0.1.2.1, and earlier allows remote attackers
-to execute arbitrary code execution... (CVSS 4.0–8.9) severity with a
-CVSS score of 4.1. Reference: https://github.com</p>
+<p>The following vulnerability has been resolved: Assessment: A.0x A.0:•19, 2018-1a through 2.0.1.2.1, and earlier allows remote attackers to execute arbitrary code execution... (CVSS 4.0 to 8.9) severity with a CVSS score of 4.1. Reference: https://github.com</p>
 </blockquote>
-<p>The formatting is right, the CVSS vocabulary is right, the confidence
-is right. The version ranges are invented, the CVSS pairing is
-nonsense, and the reference URL is truncated mid-string. That is what a
-126M model trained on 60M tokens looks like — fluent, confident, and
-wrong in the details, in a way that reads as authoritative.</p>
+<p>The formatting is right. The CVSS vocabulary is right. The confidence is right. The version ranges are invented, the CVSS pairing is nonsense, and the reference URL is truncated mid string. That is what a 126M model trained on 60M tokens looks like. Fluent, confident, and wrong in the details, in a way that reads as authoritative.</p>
 <hr />
 <h2>Honest limitations</h2>
-<p><strong>It is undertrained, by a lot.</strong> 60M tokens for a 126M-parameter model is
-2.4% of the Chinchilla-optimal amount (~2.5B tokens for this size).
-Validation loss was still falling monotonically when the budget ran out,
-so the model is sitting on the steep part of the curve, not the bottom.
-Everything here is a statement about the <em>code</em>, not about the ceiling of
-the approach.</p>
-<p><strong>It hallucinates CVE identifiers.</strong> It will produce plausible-looking
-<code>CVE-YYYY-NNNN</code> strings, and many of them will be real CVEs. It cannot
-tell you which are real, because it is not a retrieval system — it is a
-statistical model over CVE-shaped text. The eval script measures this
-explicitly rather than letting you discover it.</p>
-<p><strong>It is not a security reference.</strong> A 126M model trained on 60M tokens of
-security prose can produce confident, fluent, wrong security advice.
-Treat it as a toy, not a tool.</p>
-<p><strong>One GPU would have changed the compute story entirely.</strong> At ~650 tok/s
-on 32 CPU threads, this is a multi-day exercise. The same code on a single
-consumer GPU is a few hours, and the 10× data gap becomes a 10-minute
-problem. The CPU constraint is what made the data budget a real decision
-rather than a formality.</p>
+<p><strong>It is undertrained, by a lot.</strong> 60M tokens for a 126M parameter model is 2.4 percent of the Chinchilla optimal amount for this size. Validation loss was still falling when the budget ran out, so the model sits on the steep part of the curve, not the bottom. Everything here is a statement about the code, not about the ceiling of the approach.</p>
+<p><strong>It hallucinates CVE identifiers.</strong> It will produce plausible looking <code>CVE-YYYY-NNNN</code> strings, many of them real, and it cannot tell you which. It is a statistical model over CVE shaped text, not a database.</p>
+<p><strong>It is not a security reference.</strong> A 126M model trained on 60M tokens of security prose can produce confident, fluent, wrong security advice. Treat it as a toy, not a tool.</p>
+<p><strong>One GPU would have changed the compute story entirely.</strong> At around 650 tok/s on 32 CPU threads this is a multi day exercise. The same code on a single consumer GPU is a few hours, and the data gap becomes a ten minute problem. The CPU constraint is what made the data budget a real decision instead of a formality.</p>
 <hr />
 <h2>Reproducing it</h2>
 <pre><code class="language-bash">git clone &lt;this repo&gt; &amp;&amp; cd myllm
@@ -427,26 +273,11 @@ python scripts/00_selftest.py               # 19 correctness checks
 python scripts/05_train.py --preset tiny    # 13M params, ~1 hour
 python scripts/05_train.py --preset small   # 126M params, ~26 hours
 </code></pre>
+<p>The self test is worth running first, and it earned its keep. It caught four real bugs before a single long training run. A parameter count formula off by exactly <code>d_model</code>. A name shadowing bug in the repetition penalty. A KV cache assertion comparing logits at different positions. And left padded batched generation leaking pad tokens into attention while also shifting RoPE positions by the padding width. The last one is now verified equal to single sequence generation to 2.4e-07.</p>
+<p>The HF export checks itself too. It re-tokenizes real corpus documents with both the original and the converted tokenizer and requires byte identical output, then loads the exported model and requires the logits to match the checkpoint exactly. The published weights are loaded by a copy of this repository's own model code, vendored into the export, so the published artifact cannot drift from the code that trained it.</p>
 <p>The trained model is published as a
 <a href="https://github.com/einyx/myllm/releases/tag/v1.0">GitHub release</a>
-(<code>model.safetensors</code>, <code>tokenizer.json</code>, <code>config.json</code>) and, if the
-publisher is logged in to HuggingFace, mirrored at
-<a href="https://huggingface.co/einyx/myllm-small"><code>einyx/myllm-small</code></a>.
-<code>./scripts/13_auto_publish.sh</code> does the export and both uploads.</p>
-<p>The self-test is worth running first, and it earned its keep. It caught
-four real bugs before a single long training run: a parameter-count
-formula off by exactly <code>d_model</code>, a name-shadowing bug in the repetition
-penalty, a KV-cache assertion comparing logits at different positions, and
-left-padded batched generation leaking pad tokens into attention <em>and</em>
-shifting RoPE positions by the padding width. The last one is now
-verified equal to single-sequence generation to 2.4e-07.</p>
-<p>The HF export checks itself too. It re-tokenizes real corpus documents
-with both the original and the converted tokenizer and requires
-byte-identical output, then loads the exported model and requires the
-logits to match the checkpoint exactly (<code>max abs diff = 0.00e+00</code>). The
-published weights are loaded by a copy of this repository's own model
-code, vendored into the export, so the published artifact cannot drift
-from the code that trained it.</p>
+with <code>model.safetensors</code>, <code>tokenizer.json</code>, and <code>config.json</code>. <code>./scripts/13_auto_publish.sh</code> does the export and the upload.</p>
 </main>
 <footer>
   Built from scratch by <a href="https://github.com/einyx">einyx</a>.
