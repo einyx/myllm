@@ -294,53 +294,64 @@ CC0-1.0, Apache-2.0, and CC-BY-4.0.
 
 ## Results
 
-The released checkpoint is still training (~24 hours remaining). These
-numbers come from the **step-250 checkpoint**, which is 7% of the way
-through the run — so treat them as a floor, not a ceiling.
+Final numbers, from the released checkpoint (step 3,662 of 3,662, fully
+annealed).
 
 Held-out perplexity, broken down by what the model was asked to do:
 
 | document kind | source | loss | perplexity |
 |---|---|---|---|
-| instruction | nvd_qa | 2.477 | **11.9** |
-| record | circl | 3.813 | 45.3 |
-| instruction | nist | 5.201 | 181.5 |
-| prose | nist | 5.625 | 277.3 |
+| instruction | nvd_qa | 0.888 | **2.43** |
+| record | circl | 1.991 | 7.33 |
+| instruction | nist | 2.554 | 12.86 |
+| prose | nist | 2.928 | 18.69 |
 
-That table is the whole project in one grid. The model is already very
+Overall validation perplexity **9.90**, from a uniformly-random 32,768.
+The validation curve fell monotonically for the whole run — 4.44 at
+step 250 to 2.25 at the end — with no sign of overfitting at any point.
+
+That table is the whole project in one grid. The model is extremely
 good at the most templated shape in the corpus — answer a question in
-the `### Instruction / ### Response` form — and weakest at free prose,
-which is both the hardest thing to model and the first thing to run out
-of data.
+the `### Instruction / ### Response` form, where it reaches 2.4
+perplexity — and weakest at free prose, which is both the hardest thing
+to model and the first thing to run out of data.
 
-And the number I would put on the front of the model card, because it is
-the one that decides whether this model is safe to hand to someone:
+And the number I would put on the front of the model card, because it
+is the one that decides whether this model is safe to hand to someone:
 
 | | |
 |---|---|
-| CVE identifiers generated (32 samples) | 10 |
-| present in the training corpus | 7 (70%) |
-| **fabricated** | **3 (30%)** |
+| CVE identifiers generated (60 samples) | 27 |
+| present in the training corpus | 23 (85%) |
+| **fabricated** | **4 (15%)** |
 
-**Roughly one in three CVE identifiers this model produces is invented.**
-The invented ones are not obviously wrong — `CVE-2025-4335` looks
-exactly as plausible as a real one — and the malformed cases
-(`CVE-2014-601013`, six digits) are if anything more wrong than the
-well-formed ones are right. The model has learned the statistical shape
-of a CVE identifier perfectly and the underlying facts not at all.
+**Roughly one in seven CVE identifiers this model produces is
+invented.** And here is the part that matters more than the rate: at 7%
+of training the model produced obviously malformed identifiers — six
+digits, impossible years. At full training it produced
+`CVE-2021-41774`, which is **one digit away from the real
+CVE-2021-41773** that appeared in the prompt.
 
-Here is what it produced at step 250, asked about Log4Shell:
+**The failure mode got subtler as the model got better.** A malformed
+identifier is caught by anyone who glances at it. A nearly-correct one
+passes casual review, because the only thing wrong with it is that it
+does not exist. For a model whose job is producing security reference
+material, that is the most dangerous direction the quality curve could
+possibly move in — and it is why the model card leads with the
+hallucination rate instead of the perplexity.
 
-> Detecting exploitation of CVE-2026-11509 is classified as CWE-63 — a
-> weakness weakness weakness. This classification helps defenders
-> understand the root cause and apply appropriate countermeasures
-> targeting CWE-310 patterns are particularly effective.
+Asked about a buffer overflow, the released model says:
 
-The formatting is right. The CWE references are right-shaped. The
-confidence is right. The CVE id is invented, the CWE pairing is wrong,
-and the sentence is not English. Read that as a description of what a
-126M model at 7% of training looks like — and as an argument for why
-the warning belongs at the *top* of the model card, not the bottom.
+> The following vulnerability has been resolved: Assessment: A.0x
+> A.0:•19, 2018-1a through 2.0.1.2.1, and earlier allows remote attackers
+> to execute arbitrary code execution... (CVSS 4.0–8.9) severity with a
+> CVSS score of 4.1. Reference: https://github.com
+
+The formatting is right, the CVSS vocabulary is right, the confidence
+is right. The version ranges are invented, the CVSS pairing is
+nonsense, and the reference URL is truncated mid-string. That is what a
+126M model trained on 60M tokens looks like — fluent, confident, and
+wrong in the details, in a way that reads as authoritative.
 
 ---
 

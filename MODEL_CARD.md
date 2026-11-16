@@ -97,73 +97,77 @@ of text becomes a model that only does that:
 
 ## Evaluation
 
-Measured with `scripts/08_eval.py` on the **step-250 checkpoint** (7% of
-training, 4.1M tokens). These will be refreshed from the final
-checkpoint when training completes.
+Measured with `scripts/08_eval.py` on the **released checkpoint** (step
+3,662 of 3,662, 60M tokens, fully annealed cosine schedule).
 
 ### Held-out perplexity
 
 | document kind | source | loss | perplexity |
 |---|---|---|---|
-| instruction | nvd_qa | 2.477 | **11.9** |
-| record | circl | 3.813 | 45.3 |
-| instruction | nist | 5.201 | 181.5 |
-| prose | nist | 5.625 | 277.3 |
+| instruction | nvd_qa | 0.888 | **2.43** |
+| record | circl | 1.991 | 7.33 |
+| instruction | nist | 2.554 | 12.86 |
+| prose | nist | 2.928 | 18.69 |
 
-Overall validation perplexity: **90.9** (a uniformly random model over
-this vocabulary would be 32,768).
+Overall validation perplexity: **9.90** over the full held-out set (a
+uniformly random model over this vocabulary would be 32,768). The
+validation curve fell monotonically for the entire run — 4.44 at step
+250 to 2.25 at step 3,662 — with no sign of overfitting.
 
 The shape of that table is the honest summary of the model: it is
-already very good at the most templated shape in the corpus — answering
-a question in the `### Instruction / ### Response` form — and weakest at
-free-form prose, which is the hardest thing to model and the first thing
-that runs out of data.
+extremely good at the most templated shape in the corpus — answering a
+question in the `### Instruction / ### Response` form, where it is down
+to 2.4 perplexity — and weakest at free-form prose, which is both the
+hardest thing to model and the first thing to run out of data.
 
 ### CVE identifier hallucination
 
 This is the number that matters most, so it was measured rather than
-asserted. Sampling 32 completions from held-out prompts and extracting
+asserted. Sampling 60 completions from held-out prompts and extracting
 every CVE-shaped string:
 
 | | |
 |---|---|
-| CVE identifiers generated | 10 |
-| present in the training corpus | 7 (**70%**) |
-| **fabricated** | **3 (30%)** |
+| CVE identifiers generated | 27 |
+| present in the training corpus | 23 (85%) |
+| **fabricated** | **4 (15%)** |
 
-Examples of the fabricated ones: `CVE-2014-601013` (six digits — a
-malformed identifier), `CVE-2025-4335`.
+Examples of the fabricated ones: `CVE-2021-29384`, `CVE-2024-25211`,
+`CVE-2021-41774`, `CVE-2014-1186`.
 
-So: **roughly one in three CVE identifiers this model produces is
-invented**, and the invented ones are *more* likely to be wrong in
-subtle ways (impossible years, malformed digits) than the real ones are
-to be right. The model has learned the statistical shape of a CVE
-identifier perfectly and the underlying facts not at all.
+Note `CVE-2021-41774`: it is **one digit away from the real
+CVE-2021-41773**, which appeared in the prompt. Early in training the
+model produced obviously malformed identifiers (six digits, impossible
+years); at full training it produces correctly-formatted identifiers
+that are *nearly* correct. **The failure mode got subtler as the model
+got better** — the more dangerous direction, because a nearly-right
+identifier passes casual review in a way a malformed one never would.
 
-**Never use its CVE output as a reference.** Verify against NVD, MITRE
-CVE, or your vendor's advisory.
+Roughly one in seven CVE identifiers this model produces is invented,
+and the invented ones no longer look invented. **Never use its CVE
+output as a reference.** Verify against NVD, MITRE CVE, or your
+vendor's advisory.
 
 ### Generation speed
 
-32.6 tokens/second on a CPU with the KV cache, batch size 1, at
+60.7 tokens/second on a CPU with the KV cache, batch size 1, at
 `d_model=768` / 16 layers. On a GPU this would be orders of magnitude
 faster.
 
 ### Sample output
 
-From the step-250 checkpoint, prompt `### Instruction:\nDescribe
-CVE-2021-44228.\n\n### Response:\n`:
+From the released checkpoint, prompted about a buffer overflow:
 
-> Detecting exploitation of CVE-2026-11509 is classified as CWE-63 — a
-> weakness weakness weakness. This classification helps defenders
-> understand the root cause and apply appropriate countermeasures
-> targeting CWE-310 patterns are particularly effective.
+> The following vulnerability has been resolved: Assessment: A.0x
+> A.0:•19, 2018-1a through 2.0.1.2.1, and earlier allows remote attackers
+> to execute arbitrary code execution... (CVSS 4.0–8.9) severity with a
+> CVSS score of 4.1. Reference: https://github.com
 
-The formatting, the CWE references, the confidence, and the CVE id are
-all *structurally* right. The id is invented, the CWE pairing is wrong,
-and the sentence is not English. That is exactly what a 126M model at 7%
-of training looks like — and it is why the warning above is the first
-thing in this card rather than the last.
+The formatting is right, the CVSS vocabulary is right, the confidence is
+right. The version ranges are invented, the CVSS pairing is nonsense,
+and the reference URL is truncated mid-string. That is what a 126M model
+trained on 60M tokens looks like — and it is why the warning above is
+the first thing in this card rather than the last.
 
 ---
 
@@ -183,9 +187,10 @@ thing in this card rather than the last.
 `CVE-YYYY-NNNN`-shaped strings, and many will correspond to real
 vulnerabilities — but it has no way to tell you which ones are real. It
 is a statistical model over CVE-shaped text, not a database. Measured:
-**30% of the CVE identifiers it generates are fabricated.** **Do not use
-its CVE output for anything.** Verify any CVE identifier against
-NVD, MITRE, or your vendor's advisory.
+**15% of the CVE identifiers it generates are fabricated**, and the
+fabricated ones are correctly formatted and plausibly numbered rather
+than obviously wrong. **Do not use its CVE output for anything.** Verify
+any CVE identifier against NVD, MITRE, or your vendor's advisory.
 
 **It is undertrained.** 60M tokens for a 126M-parameter model is roughly
 2.4% of the compute-optimal amount for that size. Validation loss was

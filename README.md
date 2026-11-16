@@ -536,33 +536,33 @@ Which is a nice summary of the whole project in one table: after 2.5M
 tokens the model is best at imitating Q&A answers (the most templated
 shape), worst at free-form prose, and middling on structured records.
 
-### `small` preset — 125.9M params, 60M tokens, ~24 hours
+### `small` preset — 125.9M params, 60M tokens, 27 hours
 
-Running. Watch it with:
+**Finished.** Final validation perplexity **9.90**, falling monotonically
+for the whole run (4.44 → 2.25 loss). Weights are on
+[the v1.0 release](https://github.com/einyx/myllm/releases/tag/v1.0).
 
-```
-python scripts/09_plot.py --run runs/small
-```
-
-At **step 250** (7% of training), held-out perplexity by document type:
+Held-out perplexity by document type:
 
 | document kind | source | loss | perplexity |
 |---|---|---|---|
-| instruction | nvd_qa | 2.477 | **11.9** |
-| record | circl | 3.813 | 45.3 |
-| instruction | nist | 5.201 | 181.5 |
-| prose | nist | 5.625 | 277.3 |
+| instruction | nvd_qa | 0.888 | **2.43** |
+| record | circl | 1.991 | 7.33 |
+| instruction | nist | 2.554 | 12.86 |
+| prose | nist | 2.928 | 18.69 |
 
 And the number that goes on the front of the model card:
 
 | | |
 |---|---|
-| CVE identifiers generated (32 samples) | 10 |
-| present in the training corpus | 7 (70%) |
-| **fabricated** | **3 (30%)** |
+| CVE identifiers generated (60 samples) | 27 |
+| present in the training corpus | 23 (85%) |
+| **fabricated** | **4 (15%)** |
 
 The model has learned the *shape* of a CVE identifier perfectly and the
-facts not at all. See [`MODEL_CARD.md`](MODEL_CARD.md).
+facts not at all — and the fabricated ones are now correctly formatted
+and nearly right, not obviously malformed. See
+[`MODEL_CARD.md`](MODEL_CARD.md).
 
 ---
 
